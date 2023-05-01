@@ -1,9 +1,14 @@
+## Load libraries ----
 library(tidyverse)
 library(MASS)
 library(janitor)
 
+library(gganimate)
+library(transformr)
+library(gifski)
 
-## Read data ----
+## Ingest data ----
+# Data sourced from: https://www.abs.gov.au/articles/measuring-australias-excess-mortality-during-covid-19-pandemic-doctor-certified-deaths
 suppressWarnings(
   abs_deaths <- file.path(
     getwd(), 
@@ -34,13 +39,16 @@ abs_deaths %>%
 
 ## Fit robust regression using SAS default values ----
 rlm_fit <- MASS::rlm(
-  observed ~ week_number, 
+  observed ~ week_number + 
+    I(week_number^2) +
+    I(sin(2 * pi * week_number / 52.18)) + 
+    I(cos(2 * pi * week_number / 52.18)), 
   data = abs_deaths %>% mutate(week_number = 1:n()),
   method = 'M',  
   scale.est = 'MAD',
   psi = 'psi.bisquare',
-  c = 2
-) 
+  c = 3
+)
 
 # rlm_fit %>% str()
 
@@ -50,43 +58,59 @@ abs_deaths %>%
   ggplot(aes(x = week_starting_date, y = observed, alpha = bisquare_weighting)) +
   geom_point()
 
+## Look at effect of varying c ----
 
-
-## Grid search over c ----
-library(gganimate)
-library(transformr)
-grid_search_c <- seq(1.5, 5, 0.5) %>% 
+grid_search_c <- seq(2.1, 5, 0.1) %>% 
   purrr::map_dfr(
     function(x) {
       
+      model <- MASS::rlm(
+        observed ~ week_number + 
+          I(week_number^2) +
+          I(sin(2 * pi * week_number / 52.18)) + 
+          I(cos(2 * pi * week_number / 52.18)), 
+        data = abs_deaths,
+        method = 'M',  
+        scale.est = 'MAD',
+        psi = 'psi.bisquare',
+        c = x
+      )
+      
       abs_deaths %>% 
+        mutate(expected = predict(model, abs_deaths)) %>% 
         bind_cols(
           tibble(
             c = x,
-            weights = MASS::rlm(
-              observed ~ week_number, 
-              data = abs_deaths,
-              method = 'M',  
-              scale.est = 'MAD',
-              psi = 'psi.bisquare',
-              c = x
-            )$w
+            weights = model$w
           )
         )
       
     }
   )
 
-
-anim <- grid_search_c %>% 
+grid_search_c %>%
   ggplot(aes(x = week_starting_date, y = observed, alpha = weights)) +
   geom_point(colour = '#14B8A6') +
-  # facet_grid(rows = vars(c)) +
+  geom_line(aes(y = expected)) +
+  facet_grid(rows = vars(c)) +
   scale_y_continuous(labels = scales::comma) +
   theme_minimal() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
-        axis.line = element_line()) +
+        axis.line = element_line()) 
+
+anim <- grid_search_c %>%
+  ggplot(aes(x = week_starting_date, y = observed, alpha = weights)) +
+  geom_point(colour = '#14B8A6') +
+  geom_line(aes(y = expected), show.legend = FALSE) +
+  facet_grid(rows = vars(c)) +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line()
+  ) +
   transition_states(
     states = c,
     transition_length = 2,
@@ -94,18 +118,21 @@ anim <- grid_search_c %>%
   ) +
   enter_fade() +
   exit_fade()
-
-animation <- animate(anim, nframes = 200, end_pause = 50, height = 300, width = 400)
-library(gifski)
-anim_save(file.path(getwd(), "my_animation.gif"), animation)
+# 
+# animation <- animate(anim, nframes = 200, end_pause = 50, height = 300, width = 400)
+# 
+# anim_save(file.path(getwd(), "my_animation.gif"), animation)
 
 ## Find best RMSE/MAE/MAPE ----
-seq(1.5, 5, 0.5) %>% 
-  lapply(
+seq(2.1, 5, 0.1) %>% 
+  sapply(
     function(x) {
       
       model <- MASS::rlm(
-        observed ~ week_number, 
+        observed ~ week_number + 
+          I(week_number^2) +
+          I(sin(2 * pi * week_number / 52.18)) + 
+          I(cos(2 * pi * week_number / 52.18)), 
         data = abs_deaths,
         method = 'M',  
         scale.est = 'MAD',
