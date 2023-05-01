@@ -1092,14 +1092,8 @@
     },
     "rlang": {
       "Package": "rlang",
-      "Version": "1.1.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Requirements": [
-        "R",
-        "utils"
-      ],
-      "Hash": "dc079ccd156cde8647360f473c1fa718"
+      "Version": "1.1.1",
+      "Source": "Repository"
     },
     "rmarkdown": {
       "Package": "rmarkdown",
@@ -1433,29 +1427,8 @@
     },
     "vroom": {
       "Package": "vroom",
-      "Version": "1.6.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Requirements": [
-        "R",
-        "bit64",
-        "cli",
-        "cpp11",
-        "crayon",
-        "glue",
-        "hms",
-        "lifecycle",
-        "methods",
-        "progress",
-        "rlang",
-        "stats",
-        "tibble",
-        "tidyselect",
-        "tzdb",
-        "vctrs",
-        "withr"
-      ],
-      "Hash": "7015a74373b83ffaef64023f4a0f5033"
+      "Version": "1.6.3",
+      "Source": "Repository"
     },
     "withr": {
       "Package": "withr",
