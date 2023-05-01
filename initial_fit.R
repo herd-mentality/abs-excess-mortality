@@ -47,7 +47,7 @@ rlm_fit <- MASS::rlm(
   method = 'M',  
   scale.est = 'MAD',
   psi = 'psi.bisquare',
-  c = 3
+  c = 4.685
 )
 
 # rlm_fit %>% str()
@@ -59,8 +59,9 @@ abs_deaths %>%
   geom_point()
 
 ## Look at effect of varying c ----
-
-grid_search_c <- seq(2.1, 5, 0.1) %>% 
+# TODO: 
+#  - Shorten the training period to 2015-2020; show the forecast over 2021
+grid_search_c <- seq(2.1, 15.1, 1) %>% 
   purrr::map_dfr(
     function(x) {
       
@@ -88,40 +89,40 @@ grid_search_c <- seq(2.1, 5, 0.1) %>%
     }
   )
 
-grid_search_c %>%
-  ggplot(aes(x = week_starting_date, y = observed, alpha = weights)) +
-  geom_point(colour = '#14B8A6') +
-  geom_line(aes(y = expected)) +
-  facet_grid(rows = vars(c)) +
-  scale_y_continuous(labels = scales::comma) +
-  theme_minimal() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.line = element_line()) 
-
-anim <- grid_search_c %>%
-  ggplot(aes(x = week_starting_date, y = observed, alpha = weights)) +
-  geom_point(colour = '#14B8A6') +
-  geom_line(aes(y = expected), show.legend = FALSE) +
-  facet_grid(rows = vars(c)) +
+animation_gif <- grid_search_c %>%
+  ggplot(aes(x = week_starting_date, y = observed)) +
+  geom_point(aes(alpha = weights)) +
+  geom_line(aes(y = expected), show.legend = FALSE, colour = '#14B8A6') +
   scale_y_continuous(labels = scales::comma) +
   theme_minimal() +
   theme(
+    plot.title       = element_text(face = "bold"),
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
-    axis.line = element_line()
+    axis.line        = element_line(),
+    text             = element_text(size = 24)
   ) +
-  transition_states(
-    states = c,
-    transition_length = 2,
-    state_length = 1
+  labs(
+    x        = 'Week starting date',
+    y        = 'Mortality counts',
+    title    = 'Robust Regression',
+    subtitle = 'Varying the outlier threshold, c',
+    caption  = 'c = {formatC(frame_time, format = "f", digits = 2)}',
+    alpha    = 'Weights'
   ) +
+  transition_time(c, range(grid_search_c$c)) +
   enter_fade() +
   exit_fade()
-# 
-# animation <- animate(anim, nframes = 200, end_pause = 50, height = 300, width = 400)
-# 
-# anim_save(file.path(getwd(), "my_animation.gif"), animation)
+
+anim_save(
+  file.path(getwd(), "robust_regression_varying_c.gif"), 
+  animate(
+    animation_gif,
+    width = 1684, height = 678,
+    # Duration of GIF is then nframes / fps
+    fps = 10, nframes = 10 * 5
+  )
+)
 
 ## Find best RMSE/MAE/MAPE ----
 seq(2.1, 5, 0.1) %>% 
