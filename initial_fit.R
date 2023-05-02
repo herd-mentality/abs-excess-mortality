@@ -2,10 +2,20 @@
 library(tidyverse)
 library(MASS)
 library(janitor)
-
 library(gganimate)
 library(transformr)
 library(gifski)
+
+abs_mortality_post_theme <- theme_minimal() +
+  theme(
+    plot.title       = element_text(face = "bold"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line        = element_line(),
+    text             = element_text(size = 24)
+  ) 
+
+plot_dim <- list(width = 1684, height = 678)
 
 ## Ingest data ----
 # Data sourced from: https://www.abs.gov.au/articles/measuring-australias-excess-mortality-during-covid-19-pandemic-doctor-certified-deaths
@@ -32,10 +42,29 @@ abs_deaths %>%
   pivot_longer(expected:observed, names_to = 'series', values_to = 'value') %>%
   mutate(series = str_to_title(series)) %>% 
   ggplot(aes(x = week_starting_date, y = value, colour = series)) +
-  geom_line() +
+  geom_line() + 
   scale_y_continuous(labels = scales::comma) +
-  labs(x = 'Week', y = 'Observed / Expected Deaths', colour = 'Series') +
+  annotate(
+    'rect', 
+    xmin = cutoff_date, 
+    xmax = max(abs_deaths$week_starting_date), 
+    ymin = -Inf, ymax = Inf, 
+    alpha = 0.2, fill = '#FA9F42'
+  ) +
+  labs(
+    x = 'Week starting date', 
+    y = 'Mortality counts', 
+    colour = element_blank(),
+    title = 'ABS observed and expected mortality counts',
+    caption = 'Forecast year 2021 highlighted'
+  ) +
+  abs_mortality_post_theme +
   theme(legend.position = 'bottom')
+
+## Modelling parameters ----
+cutoff_date <- ymd('2021-01-01')
+train_set   <- abs_deaths %>% filter(week_starting_date >= cutoff_date %m-% years(5) & week_starting_date < cutoff_date)
+test_set    <- abs_deaths %>% filter(week_starting_date >= cutoff_date & week_starting_date < cutoff_date %m+% years(1))
 
 ## Fit robust regression using SAS default values ----
 rlm_fit <- MASS::rlm(
@@ -50,8 +79,6 @@ rlm_fit <- MASS::rlm(
   c = 4.685
 )
 
-# rlm_fit %>% str()
-
 ## Plot weights ----
 abs_deaths %>% 
   mutate(bisquare_weighting = rlm_fit$w) %>% 
@@ -59,9 +86,7 @@ abs_deaths %>%
   geom_point()
 
 ## Look at effect of varying c ----
-# TODO: 
-#  - Shorten the training period to 2015-2020; show the forecast over 2021
-grid_search_c <- seq(2.1, 15.1, 1) %>% 
+varying_c <- seq(2.5, 15.5, 1) %>% 
   purrr::map_dfr(
     function(x) {
       
@@ -70,47 +95,60 @@ grid_search_c <- seq(2.1, 15.1, 1) %>%
           I(week_number^2) +
           I(sin(2 * pi * week_number / 52.18)) + 
           I(cos(2 * pi * week_number / 52.18)), 
-        data = abs_deaths,
+        data = train_set,
         method = 'M',  
         scale.est = 'MAD',
         psi = 'psi.bisquare',
         c = x
       )
       
-      abs_deaths %>% 
-        mutate(expected = predict(model, abs_deaths)) %>% 
+      train_set %>% 
+        mutate(
+          expected = predict(model, train_set),
+          series = 'Historical'
+        ) %>% 
         bind_cols(
           tibble(
             c = x,
             weights = model$w
           )
+        ) %>% 
+        bind_rows(
+          test_set %>% 
+            mutate(
+              expected = predict(model, test_set), 
+              series = 'Forecast',
+              c = x, 
+              weights = 1
+            )
         )
       
     }
   )
 
-animation_gif <- grid_search_c %>%
+animation_gif <- varying_c %>%
   ggplot(aes(x = week_starting_date, y = observed)) +
   geom_point(aes(alpha = weights)) +
-  geom_line(aes(y = expected), show.legend = FALSE, colour = '#14B8A6') +
+  geom_line(aes(y = expected, colour = series), show.legend = FALSE) +
   scale_y_continuous(labels = scales::comma) +
-  theme_minimal() +
-  theme(
-    plot.title       = element_text(face = "bold"),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    axis.line        = element_line(),
-    text             = element_text(size = 24)
+  scale_colour_manual(values = c('Historical' = '#14B8A6', 'Forecast' = '#EC4899')) +
+  annotate(
+    'rect', 
+    xmin = cutoff_date, 
+    xmax = max(abs_deaths$week_starting_date), 
+    ymin = -Inf, ymax = Inf, 
+    alpha = 0.2, fill = '#FA9F42'
   ) +
+  abs_mortality_post_theme +
   labs(
     x        = 'Week starting date',
     y        = 'Mortality counts',
     title    = 'Robust Regression',
     subtitle = 'Varying the outlier threshold, c',
-    caption  = 'c = {formatC(frame_time, format = "f", digits = 2)}',
+    caption  = 'Forecast year 2021 highlighted, c = {formatC(frame_time, format = "f", digits = 2)}',
     alpha    = 'Weights'
   ) +
-  transition_time(c, range(grid_search_c$c)) +
+  transition_time(c, rev(range(varying_c$c))) +
   enter_fade() +
   exit_fade()
 
@@ -118,7 +156,7 @@ anim_save(
   file.path(getwd(), "robust_regression_varying_c.gif"), 
   animate(
     animation_gif,
-    width = 1684, height = 678,
+    width = plot_dim$width, height = plot_dim$height,
     # Duration of GIF is then nframes / fps
     fps = 10, nframes = 10 * 5
   )
@@ -153,9 +191,7 @@ seq(2.1, 5, 0.1) %>%
 #  - We want to look at forecasting over 2020, but also forecasting 2021 including 2020 in baseline period since that's topical
 #  - Look at grid searching over all perms of c/scaleest/psi to find best RMSE using CV - then apply to 2021?
 
-cutoff_date <- ymd('2021-01-01')
-train_set <- abs_deaths %>% filter(week_starting_date >= cutoff_date %m-% years(5) & week_starting_date < cutoff_date)
-test_set <- abs_deaths %>% filter(week_starting_date >= cutoff_date & week_starting_date < cutoff_date %m+% years(1))
+
 
 model <- MASS::rlm(
   observed ~ week_number + 
