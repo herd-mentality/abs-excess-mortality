@@ -1,6 +1,5 @@
 # TODO:
 #  - Create/format graphs using the defined theme in libs-utils where possible
-#  - Where multiple graphs need to be arranged and legends accounted for, use patchwork
 
 ## Load libs and function definitions ----
 source(file.path(getwd(), 'libs-utils.R'))
@@ -101,7 +100,60 @@ abs_deaths %>%
 
 ## Predicting 2020 and 2021 ----
 
-predict_year_rlm(
+plot_predicted <- function(df, legend = 'none', ...) {
+  
+  df %>% 
+    ggplot(aes(x = week_starting_date)) +
+    geom_line(aes(y = observed, colour = 'Observed')) +
+    geom_line(aes(y = expected, colour = 'ABS Predicted')) +
+    geom_line(aes(y = predicted, colour = 'Herd Mentality Predicted')) +
+    annotate(
+      'rect', 
+      xmin = cutoff_date, 
+      xmax = max(abs_deaths$week_starting_date), 
+      ymin = -Inf, ymax = Inf, 
+      alpha = 0.2, fill = '#FA9F42'
+    ) +
+    scale_colour_manual(values = c(
+      'Observed' = 'grey', 
+      'ABS Predicted' = '#EC4899', 
+      'Herd Mentality Predicted' = '#14B8A6'
+    )) +
+    scale_y_continuous(labels = scales::comma) +
+    labs(
+      colour = element_blank(),
+      ...
+    ) +
+    theme(legend.position = legend)
+  
+}
+
+with_t2 <- predict_year_rlm(
+  year_to_predict    = 2021, 
+  full_time_series   = abs_deaths, 
+  date_col           = 'week_starting_date', 
+  values_col         = 'observed', 
+  num_years_baseline = 5,
+  # We get closer to the ABS' values if we don't have the squared term for some reason
+  formula = paste0(
+    'observed ~ week_number + ',
+    'I(week_number^2) + ',
+    'I(sin(2 * pi * week_number / 52.18)) + ',
+    'I(cos(2 * pi * week_number / 52.18))'
+  ),
+  method             = 'M',
+  scale.est          = 'MAD',
+  psi                = 'psi.bisquare',
+  c                  = 4.685
+)$results %>% 
+  plot_predicted(
+    legend = 'none', 
+    y = 'Observed', 
+    x = element_blank(),
+    title = 'Herd Mentality model with/out t^2 term'
+  )
+
+no_t2 <- predict_year_rlm(
   year_to_predict    = 2021, 
   full_time_series   = abs_deaths, 
   date_col           = 'week_starting_date', 
@@ -119,27 +171,17 @@ predict_year_rlm(
   psi                = 'psi.bisquare',
   c                  = 4.685
 )$results %>% 
-  ggplot(aes(x = week_starting_date)) +
-  geom_line(aes(y = observed, colour = 'Observed')) +
-  geom_line(aes(y = expected, colour = 'ABS Predicted')) +
-  geom_line(aes(y = predicted, colour = 'Herd Mentality Predicted')) +
-  annotate(
-    'rect', 
-    xmin = cutoff_date, 
-    xmax = max(abs_deaths$week_starting_date), 
-    ymin = -Inf, ymax = Inf, 
-    alpha = 0.2, fill = '#FA9F42'
-  ) +
-  scale_colour_manual(values = c(
-    'Observed' = 'grey', 
-    'ABS Predicted' = '#EC4899', 
-    'Herd Mentality Predicted' = '#14B8A6'
-  )) +
-  scale_y_continuous(labels = scales::comma) +
-  labs(
-    colour = element_blank()
-  )
+plot_predicted(legend = 'bottom', x = 'Week', y = 'Observed') 
 
+with_t2 + no_t2 + plot_layout(ncol = 1)
+
+ggsave(
+  file.path(getwd(), 'plots', "abs_plot_w_wo_t2.jpg"),
+  device = 'jpg',
+  width = plot_dim$width,
+  height = plot_dim$height * 2,
+  units = 'px'
+)
 
 ## Find ABS's parameters ----
 
