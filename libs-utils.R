@@ -1,6 +1,7 @@
 ## Load libraries, define common parameters ----
 library(tidyverse)
 library(patchwork)
+library(ggtext)
 library(MASS)
 library(janitor)
 library(purrr)
@@ -16,11 +17,11 @@ abs_mortality_post_theme <- theme_minimal() +
     plot.title       = element_text(face = "bold"),
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
-    axis.line        = element_line(),
-    text             = element_text(size = 24)
+    # text             = element_text(size = 24),
+    axis.line        = element_line()
   ) 
 
-plot_dim <- list(width = 1684, height = 678)
+plot_dim <- list(width = 1684, height = 1684 * 9/16)
 
 ## Function definitions ----
 

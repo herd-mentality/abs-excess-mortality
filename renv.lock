@@ -676,6 +676,11 @@
       ],
       "Hash": "3a147ee02e85a8941aad9909f1b43b7b"
     },
+    "ggtext": {
+      "Package": "ggtext",
+      "Version": "0.1.2",
+      "Source": "Repository"
+    },
     "gifski": {
       "Package": "gifski",
       "Version": "1.6.6-1",

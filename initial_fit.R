@@ -29,17 +29,10 @@ suppressWarnings(
 abs_deaths %>%
   dplyr::select(week_starting_date, expected, observed) %>% 
   pivot_longer(expected:observed, names_to = 'series', values_to = 'value') %>%
-  mutate(series = str_to_title(series)) %>% 
+  mutate(series = str_to_title(series), series = factor(series, levels = c('Observed', 'Expected'), ordered = TRUE)) %>% 
   ggplot(aes(x = week_starting_date, y = value, colour = series)) +
   geom_line() + 
   scale_y_continuous(labels = scales::comma) +
-  annotate(
-    'rect', 
-    xmin = ymd('2020-01-01'), 
-    xmax = cutoff_date, 
-    ymin = -Inf, ymax = Inf, 
-    alpha = 0.2, fill = '#aaaaaa'
-  ) +
   annotate(
     'rect', 
     xmin = cutoff_date, 
@@ -49,20 +42,25 @@ abs_deaths %>%
   ) +
   labs(
     x = 'Week starting date', 
-    y = 'Mortality counts', 
+    y = 'Deaths', 
     colour = element_blank(),
     title = 'ABS observed and expected mortality counts',
-    caption = 'Target years 2020 & 2021 highlighted'
+    caption = 'Target year 2021 highlighted'
   ) +
+  scale_colour_manual(values = c(
+    'Observed' = 'grey', 
+    'Expected' = '#EC4899'
+  )) +
   abs_mortality_post_theme +
-  theme(legend.position = 'bottom')
+  theme(legend.position = 'bottom', text = element_text(size = 40))
 
 ggsave(
   file.path(getwd(), 'plots', "abs_initial_plot.jpg"),
   device = 'jpg',
-  width = plot_dim$width,
-  height = plot_dim$height,
-  units = 'px'
+  width = plot_dim$width/72,
+  height = plot_dim$height/72,
+  units = 'in',
+  dpi = 150
 )
 
 # Excess mortality
@@ -100,7 +98,7 @@ abs_deaths %>%
 
 ## Predicting 2020 and 2021 ----
 
-plot_predicted <- function(df, legend = 'none', ...) {
+plot_predicted <- function(df, legend = 'none', text_size = element_text(24), ...) {
   
   df %>% 
     ggplot(aes(x = week_starting_date)) +
@@ -124,7 +122,12 @@ plot_predicted <- function(df, legend = 'none', ...) {
       colour = element_blank(),
       ...
     ) +
-    theme(legend.position = legend)
+    abs_mortality_post_theme +
+    theme(
+      legend.position = legend, 
+      legend.direction = 'horizontal'#,
+      # text             = text_size
+    )
   
 }
 
@@ -134,7 +137,6 @@ with_t2 <- predict_year_rlm(
   date_col           = 'week_starting_date', 
   values_col         = 'observed', 
   num_years_baseline = 5,
-  # We get closer to the ABS' values if we don't have the squared term for some reason
   formula = paste0(
     'observed ~ week_number + ',
     'I(week_number^2) + ',
@@ -147,10 +149,10 @@ with_t2 <- predict_year_rlm(
   c                  = 4.685
 )$results %>% 
   plot_predicted(
-    legend = 'none', 
+    legend = 'bottom', 
     y = 'Observed', 
-    x = element_blank(),
-    title = 'Herd Mentality model with/out t^2 term'
+    x = 'Week'#,
+    # title = 'Herd Mentality model with/out t^2 term'
   )
 
 no_t2 <- predict_year_rlm(
@@ -159,7 +161,6 @@ no_t2 <- predict_year_rlm(
   date_col           = 'week_starting_date', 
   values_col         = 'observed', 
   num_years_baseline = 5,
-  # We get closer to the ABS' values if we don't have the squared term for some reason
   formula = paste0(
     'observed ~ week_number + ',
     # 'I(week_number^2) + ',
@@ -171,16 +172,24 @@ no_t2 <- predict_year_rlm(
   psi                = 'psi.bisquare',
   c                  = 4.685
 )$results %>% 
-plot_predicted(legend = 'bottom', x = 'Week', y = 'Observed') 
+plot_predicted(legend = 'bottom', x = 'Week', y = element_blank()) 
 
-with_t2 + no_t2 + plot_layout(ncol = 1)
+(with_t2 + no_t2) / guide_area() + plot_layout(heights = c(9, 1), guides = 'collect') + 
+  plot_annotation(
+    # title = "*Herd Mentality model* with/out **t<sup>2</sup>**", 
+    title = "**<span style='color:#14B8A6'>Herd Mentality</span> vs. <span style='color:#EC4899'>ABS</span> predicted mortality**",
+    subtitle = "With and without t<sup>2</sup> predictor",
+    theme = theme(plot.title = element_markdown(), plot.subtitle = element_markdown(size = 25))
+  ) & 
+  theme(text = element_text(size = 40))
 
 ggsave(
   file.path(getwd(), 'plots', "abs_plot_w_wo_t2.jpg"),
   device = 'jpg',
-  width = plot_dim$width,
-  height = plot_dim$height * 2,
-  units = 'px'
+  width = plot_dim$width/72,
+  height = plot_dim$height/72,
+  units = 'in',
+  dpi = 150
 )
 
 ## Find ABS's parameters ----
@@ -325,18 +334,29 @@ abs_closest_candidate_results$results %>%
   labs(
     x = 'Week', y = 'Deaths',
     colour  = element_blank(),
-    title   = 'Closest parameters to ABS model',
-    caption = paste0(
-      'Closest candidate model -\n',
-      str_interp('  Scale estimator: ${abs_closest_candidate$scale.est}\n'),
-      str_interp('  Weighting function: ${abs_closest_candidate$psi}\n'),
-      str_interp('  Outlier threshold: ${ifelse(is.na(abs_closest_candidate$k), abs_closest_candidate$c, abs_closest_candidate$k)}')
-    )
+    title   = 'Closest parameters to ABS model'#,
+    # caption = paste0(
+    #   'Closest candidate model -\n',
+    #   str_interp('  Scale estimator: ${abs_closest_candidate$scale.est}\n'),
+    #   str_interp('  Weighting function: ${abs_closest_candidate$psi}\n'),
+    #   str_interp('  Outlier threshold: ${ifelse(is.na(abs_closest_candidate$k), abs_closest_candidate$c, abs_closest_candidate$k)}')
+    # )
   ) +
+  abs_mortality_post_theme +
   theme(
     plot.caption = element_text(hjust = 0), 
-    legend.position = 'bottom'
+    legend.position = 'bottom',
+    text = element_text(size = 40)
   )
+
+ggsave(
+  file.path(getwd(), 'plots', "abs_closest_candidate.jpg"),
+  device = 'jpg',
+  width = plot_dim$width/72,
+  height = plot_dim$height/72,
+  units = 'in',
+  dpi = 150
+)
 
 abs_closest_candidate_results$results %>% 
   filter(year(week_starting_date) == 2021) %>% 
@@ -360,7 +380,7 @@ varying_c <- seq(2.5, 15.5, 1) %>%
         data = train_set,
         method = 'M',  
         scale.est = 'MAD',
-        psi = 'psi.huber',
+        psi = 'psi.bisquare',
         c = x
       )
       
@@ -402,6 +422,7 @@ animation_gif <- varying_c %>%
     alpha = 0.2, fill = '#FA9F42'
   ) +
   abs_mortality_post_theme +
+  theme(text = element_text(size = 40), legend.position = 'bottom') +
   labs(
     x        = 'Week starting date',
     y        = 'Mortality counts',
@@ -415,7 +436,7 @@ animation_gif <- varying_c %>%
   exit_fade()
 
 anim_save(
-  file.path(getwd(), 'plots', "robust_regression_varying_c_huber.gif"), 
+  file.path(getwd(), 'plots', "robust_regression_varying_c.gif"), 
   animate(
     animation_gif,
     width = plot_dim$width, height = plot_dim$height,
