@@ -422,7 +422,11 @@ animation_gif <- varying_c %>%
     alpha = 0.2, fill = '#FA9F42'
   ) +
   abs_mortality_post_theme +
-  theme(text = element_text(size = 40), legend.position = 'bottom') +
+  theme(
+    text = element_text(size = 40), 
+    legend.position = 'bottom', 
+    plot.subtitle = element_markdown(size = 25)
+  ) +
   labs(
     x        = 'Week starting date',
     y        = 'Mortality counts',
